@@ -4,24 +4,19 @@ The class list comes from a Course Finder Excel export in this folder
 (default: Course_Finder_Results_115443.xls). Run on your host machine (where
 goat.law.upenn.edu is reachable):
 
-
     pip install -r requirements.txt
     streamlit run app.py
 """
 from __future__ import annotations
 
-
 import glob
 import os
-
 
 import pandas as pd
 import streamlit as st
 
-
 import scraper
 import schedule as schedule_mod
-
 
 # Live "search as you type" needs the streamlit-keyup component, which reruns on
 # every keystroke. Fall back to the built-in text box (Enter/blur to search) if
@@ -29,20 +24,15 @@ import schedule as schedule_mod
 try:
     from st_keyup import st_keyup
 
-
     HAS_KEYUP = True
 except ImportError:  # pragma: no cover
     HAS_KEYUP = False
 
-
-st.set_page_config(page_title="My Schedule and Textbook List", page_icon="📚", layout="wide")
-st.title("📚 Schedule and Textbooks")
+st.set_page_config(page_title="My Law Textbooks", page_icon="📚", layout="wide")
+st.title("📚 My Law Textbooks")
 st.caption("Check the classes you're taking and get the combined list of books to buy.")
 
-
 HERE = os.path.dirname(os.path.abspath(__file__))
-
-
 
 
 def find_class_files() -> list[str]:
@@ -52,12 +42,9 @@ def find_class_files() -> list[str]:
     )
 
 
-
-
 @st.cache_data(show_spinner=False)
 def term_options(paths: tuple[str, ...], mtimes: tuple[float, ...]) -> list[dict]:
     """Build (file, label, code) options, one per Excel.
-
 
     Label = the file's name (e.g. "Fall 2026"). Term code = derived from the
     file's Term column, falling back to the filename.
@@ -72,22 +59,16 @@ def term_options(paths: tuple[str, ...], mtimes: tuple[float, ...]) -> list[dict
     return opts
 
 
-
-
 @st.cache_data(show_spinner=False)
 def load_courses(path: str, mtime: float) -> list[dict]:
     # mtime is part of the cache key so edits to the file refresh the list.
     return [vars(c) for c in scraper.load_courses_from_excel(path)]
 
 
-
-
 @st.cache_data(show_spinner=False)
 def fetch_books(slug: str, section: str, term: str, label: str) -> list[dict]:
     books = scraper.get_textbooks(slug, section, term, course_label=label)
     return [b.to_dict() for b in books]
-
-
 
 
 class_files = find_class_files()
@@ -98,9 +79,7 @@ if not class_files:
     )
     st.stop()
 
-
 options = term_options(tuple(class_files), tuple(os.path.getmtime(p) for p in class_files))
-
 
 with st.sidebar:
     st.header("Setup")
@@ -112,23 +91,19 @@ with st.sidebar:
     chosen = options[idx]
     class_file = chosen["path"]
 
-
     # The scrape needs a Course Finder term code, derived from the selected file's
     # term label (A=Spring, B=Summer, C=Fall).
     term = chosen["code"]
     st.caption(f"File: `{os.path.basename(class_file)}`")
     st.divider()
-    st.subheader("Filter Textbooks")
+    st.subheader("Filter")
     which = st.radio("Show", ["All", "Required only", "Optional only"], index=0)
-
 
 courses = [scraper.Course(**c) for c in load_courses(class_file, os.path.getmtime(class_file))]
 st.caption(f"Loaded {len(courses)} classes from `{os.path.basename(class_file)}` ({chosen['label']}).")
 
-
 # --- Selectable class table ------------------------------------------------
 st.subheader("Select your classes")
-
 
 # Checked classes persist in session state (keyed by section), so filtering the
 # table never loses selections for rows that are currently hidden. Reset them
@@ -138,7 +113,6 @@ if st.session_state.get("_active_file") != class_file:
     st.session_state._active_file = class_file
 if "taken" not in st.session_state:
     st.session_state.taken = set()
-
 
 table = pd.DataFrame(
     {
@@ -150,7 +124,6 @@ table = pd.DataFrame(
     }
 )
 
-
 # Filter narrows the visible rows as you type. Selections live in session state,
 # so none are lost while you search. With streamlit-keyup the table updates on
 # every keystroke; otherwise it updates on Enter/blur.
@@ -160,18 +133,43 @@ if HAS_KEYUP:
 else:
     search = st.text_input("Filter the list (optional)", placeholder=_placeholder, key="search")
 search = search or ""
-mask = pd.Series(True, index=table.index)
+
+# Precompute each course's parsed meetings once, keyed by section.
+meetings_by_section = {
+    c.section: schedule_mod.parse_meetings(c.meeting_times, c.title, c.section) for c in courses
+}
+
 if search:
+    # While searching, show ALL classes matching the query.
     mask = (
         table["Title"].str.contains(search, case=False, na=False)
         | table["Section"].str.contains(search, case=False, na=False)
         | table["Instructor"].str.contains(search, case=False, na=False)
     )
+else:
+    # With no search, show only classes that don't time-conflict with the ones
+    # already selected — plus the selected classes themselves (so they stay
+    # visible and can be unchecked). If nothing is selected, show everything.
+    taken = st.session_state.taken
+    selected_meetings = [m for s in taken for m in meetings_by_section.get(s, [])]
 
+    def _keep(section: str) -> bool:
+        if section in taken:
+            return True
+        return not schedule_mod.meetings_conflict(
+            meetings_by_section.get(section, []), selected_meetings
+        )
+
+    mask = table["Section"].map(_keep) if taken else pd.Series(True, index=table.index)
 
 view = table[mask].copy()
 view.insert(0, "Take", view["Section"].isin(st.session_state.taken))
 
+if not search and st.session_state.taken:
+    st.caption(
+        f"Showing {len(view)} classes that don't conflict with your selection "
+        "(plus your selected classes). Search to see all classes."
+    )
 
 edited = st.data_editor(
     view,
@@ -185,15 +183,12 @@ edited = st.data_editor(
     key=f"class_table_{search}",
 )
 
-
 # Sync only the rows currently visible; hidden selections stay untouched.
 visible = set(view["Section"])
 checked_now = set(edited.loc[edited["Take"], "Section"])
 st.session_state.taken = (st.session_state.taken - visible) | checked_now
 
-
 selected = [c for c in courses if c.section in st.session_state.taken]
-
 
 if selected:
     def _bold_label(c):
@@ -203,20 +198,16 @@ if selected:
             rest.append(c.instructor)
         return f"**{c.title or c.slug}** — " + " — ".join(rest)
 
-
     st.markdown("Selected: " + ", ".join(_bold_label(c) for c in selected))
 else:
     st.info("Check one or more classes above to see their textbooks and schedule.")
     st.stop()
 
-
 st.divider()
-
 
 # --- Weekly schedule PDF ---------------------------------------------------
 st.subheader("🗓️ Weekly schedule")
 st.caption("A landscape weekly grid of your selected classes — when they meet and which room.")
-
 
 # Preview the parsed meetings so it's clear what the PDF will contain.
 sched_rows = []
@@ -239,9 +230,7 @@ for c in selected:
             {"Class": c.title, "Section": c.section, "Day": "TBA", "Start": "", "End": "", "Room": ""}
         )
 
-
 st.dataframe(pd.DataFrame(sched_rows), hide_index=True, use_container_width=True)
-
 
 try:
     pdf_bytes = schedule_mod.build_schedule_pdf(selected, title="My Class Schedule")
@@ -254,9 +243,7 @@ try:
 except Exception as e:  # noqa: BLE001
     st.error(f"Couldn't build the schedule PDF: {e}")
 
-
 st.divider()
-
 
 # --- Fetch & display textbooks --------------------------------------------
 all_books: list[dict] = []
@@ -270,24 +257,19 @@ for i, course in enumerate(selected, start=1):
     progress.progress(i / len(selected), text=f"Fetching textbooks… ({i}/{len(selected)})")
 progress.empty()
 
-
 for err in errors:
     st.error(err)
-
 
 if not all_books:
     st.warning("No textbooks listed for the selected classes.")
     st.stop()
 
-
 df = pd.DataFrame(all_books)
-
 
 if which == "Required only":
     df = df[df["required"]]
 elif which == "Optional only":
     df = df[~df["required"]]
-
 
 # De-duplicate books shared across sections (same ISBN), merging their classes.
 if not df.empty:
@@ -309,13 +291,10 @@ if not df.empty:
         )
     )
 
-
 st.subheader(f"{len(df)} book(s) to buy")
-
 
 # Show a red check mark for required books, blank for optional.
 df = df.assign(required_mark=df["required"].map(lambda r: "✔" if r else ""))
-
 
 display = df[
     [
@@ -345,11 +324,9 @@ display = df[
     }
 )
 
-
 styled = display.style.map(
     lambda _: "color: red; font-weight: bold; text-align: center", subset=["Required"]
 )
-
 
 st.dataframe(
     styled,
@@ -363,13 +340,9 @@ st.dataframe(
     },
 )
 
-
 st.download_button(
     "⬇️ Download as CSV",
     data=df.to_csv(index=False).encode("utf-8"),
     file_name=f"textbooks_{term}.csv",
     mime="text/csv",
 )
-
-
-
