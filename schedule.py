@@ -1,24 +1,19 @@
 """Parse Course Finder meeting times and render a weekly schedule PDF.
 
-
 Meeting-time strings look like::
-
 
     "MWR 1:30PM - 2:45PM \r\n\t Gittis Hall 1"
     "R 10:30AM - 11:45AM \r\n\t Gittis Hall 214 , MW 1:30PM - 2:45PM \r\n\t Gittis Hall 214"
     "TBA  TBA"
-
 
 i.e. one or more comma-separated meetings, each ``<DAYS> <START> - <END> <room>``.
 Days are single letters: M T W R F S U (Mon..Sun).
 """
 from __future__ import annotations
 
-
 import io
 import re
 from dataclasses import dataclass
-
 
 # Day letter -> (order, full name). R = Thursday, U = Sunday (registrar convention).
 DAY_ORDER = ["M", "T", "W", "R", "F", "S", "U"]
@@ -32,13 +27,10 @@ DAY_NAMES = {
     "U": "Sunday",
 }
 
-
 _MEETING_RE = re.compile(
     r"([MTWRFSU]+)\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)\s*(.*)",
     re.I | re.S,
 )
-
-
 
 
 @dataclass
@@ -50,17 +42,13 @@ class Meeting:
     title: str = ""
     section: str = ""
 
-
     @property
     def start_label(self) -> str:
         return _fmt(self.start_min)
 
-
     @property
     def end_label(self) -> str:
         return _fmt(self.end_min)
-
-
 
 
 def _to_minutes(t: str) -> int:
@@ -73,15 +61,11 @@ def _to_minutes(t: str) -> int:
     return h * 60 + int(m.group(2))
 
 
-
-
 def _fmt(minutes: int) -> str:
     h, m = divmod(minutes, 60)
     ampm = "AM" if h < 12 else "PM"
     hh = h % 12 or 12
     return f"{hh}:{m:02d} {ampm}"
-
-
 
 
 def _clean_room(raw: str) -> str:
@@ -90,11 +74,8 @@ def _clean_room(raw: str) -> str:
     return room
 
 
-
-
 def parse_meetings(meeting_times: str, title: str = "", section: str = "") -> list[Meeting]:
     """Parse a meeting-times cell into individual per-day Meeting entries.
-
 
     Returns [] for TBA/blank or anything without a parseable time range.
     """
@@ -123,11 +104,21 @@ def parse_meetings(meeting_times: str, title: str = "", section: str = "") -> li
     return meetings
 
 
+def meetings_conflict(a: list[Meeting], b: list[Meeting]) -> bool:
+    """True if any meeting in ``a`` overlaps in time (same day) with any in ``b``.
+
+    Two meetings overlap when they share a day and their [start, end) intervals
+    intersect. TBA/unscheduled meetings (empty lists) never conflict.
+    """
+    for m in a:
+        for n in b:
+            if m.day == n.day and m.start_min < n.end_min and n.start_min < m.end_min:
+                return True
+    return False
 
 
 def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes:
     """Render a landscape weekly-grid PDF for the given courses.
-
 
     ``courses`` is any iterable of objects with ``.title``, ``.section`` and
     ``.meeting_times`` attributes (e.g. scraper.Course). Returns PDF bytes.
@@ -136,7 +127,6 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
     from reportlab.lib.pagesizes import landscape, letter
     from reportlab.lib.units import inch
     from reportlab.pdfgen import canvas
-
 
     # Collect meetings and any TBA/unscheduled courses (listed separately).
     meetings: list[Meeting] = []
@@ -148,11 +138,9 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
         else:
             unscheduled.append(f"{c.section} — {c.title}")
 
-
     # Which day columns to show: Mon-Fri always, weekends only if used.
     used_days = {m.day for m in meetings}
     days = [d for d in DAY_ORDER if d in {"M", "T", "W", "R", "F"} or d in used_days]
-
 
     # Time bounds (rounded to the hour), with a sensible default if empty.
     if meetings:
@@ -161,23 +149,19 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
     else:
         start_min, end_min = 8 * 60, 18 * 60
 
-
     buf = io.BytesIO()
     page_w, page_h = landscape(letter)
     c = canvas.Canvas(buf, pagesize=(page_w, page_h))
-
 
     margin = 0.5 * inch
     header_h = 0.5 * inch  # page title
     col_header_h = 0.28 * inch  # day-name row
     time_col_w = 0.9 * inch
 
-
     grid_top = page_h - margin - header_h
     grid_bottom = margin + (0.9 * inch if unscheduled else 0.0)
     grid_left = margin + time_col_w
     grid_right = page_w - margin
-
 
     grid_h = grid_top - col_header_h - grid_bottom
     grid_w = grid_right - grid_left
@@ -185,23 +169,19 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
     total_min = max(end_min - start_min, 60)
     px_per_min = grid_h / total_min
 
-
     def y_for(minute: int) -> float:
         # Earlier time -> higher on the page.
         return (grid_top - col_header_h) - (minute - start_min) * px_per_min
 
-
     # Page title.
     c.setFont("Helvetica-Bold", 16)
     c.drawString(margin, page_h - margin - 0.28 * inch, title)
-
 
     # Day-column headers.
     c.setFont("Helvetica-Bold", 11)
     for i, d in enumerate(days):
         x = grid_left + i * col_w
         c.drawCentredString(x + col_w / 2, grid_top - col_header_h + 0.07 * inch, DAY_NAMES[d])
-
 
     # Horizontal hour lines + time labels.
     c.setFont("Helvetica", 8)
@@ -213,14 +193,12 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
         c.drawRightString(grid_left - 4, y - 3, _fmt(minute))
     c.setFillColor(colors.black)
 
-
     # Vertical day separators + outer border.
     c.setStrokeColor(colors.grey)
     for i in range(len(days) + 1):
         x = grid_left + i * col_w
         c.line(x, y_for(start_min), x, grid_top - col_header_h)
     c.rect(grid_left, y_for(end_min), grid_w, (grid_top - col_header_h) - y_for(end_min))
-
 
     # A palette so different courses get different block colors.
     palette = [
@@ -231,12 +209,10 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
     ]
     color_by_section: dict[str, colors.Color] = {}
 
-
     def color_for(section: str) -> colors.Color:
         if section not in color_by_section:
             color_by_section[section] = palette[len(color_by_section) % len(palette)]
         return color_by_section[section]
-
 
     # Draw each meeting as a filled block.
     day_index = {d: i for i, d in enumerate(days)}
@@ -253,7 +229,6 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
         c.setFillColor(fill)
         c.setStrokeColor(colors.white)
         c.rect(x, y_bot, w, h, fill=1, stroke=1)
-
 
         # Label text (title / time / room), clipped to the block.
         c.setFillColor(colors.white)
@@ -275,7 +250,6 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
                 ty -= 7.5
         c.restoreState()
 
-
     # Footer: any TBA / unscheduled courses.
     if unscheduled:
         c.setFillColor(colors.black)
@@ -284,12 +258,9 @@ def build_schedule_pdf(courses: list, title: str = "My Class Schedule") -> bytes
         c.setFont("Helvetica", 8)
         c.drawString(margin, margin + 0.38 * inch, "; ".join(unscheduled)[:180])
 
-
     c.showPage()
     c.save()
     return buf.getvalue()
-
-
 
 
 def _wrap(c, text: str, max_w: float, font: str, size: float) -> list[str]:
@@ -309,6 +280,3 @@ def _wrap(c, text: str, max_w: float, font: str, size: float) -> list[str]:
     if cur:
         lines.append(cur)
     return lines[:3]  # cap so a long title can't overflow a small block
-
-
-
