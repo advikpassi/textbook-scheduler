@@ -28,8 +28,8 @@ try:
 except ImportError:  # pragma: no cover
     HAS_KEYUP = False
 
-st.set_page_config(page_title="My Law Textbooks", page_icon="📚", layout="wide")
-st.title("📚 My Law Textbooks")
+st.set_page_config(page_title="My Schedule and Textbooks", page_icon="📚", layout="wide")
+st.title("📚 Schedule and Textbooks")
 st.caption("Check the classes you're taking and get the combined list of books to buy.")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -96,7 +96,7 @@ with st.sidebar:
     term = chosen["code"]
     st.caption(f"File: `{os.path.basename(class_file)}`")
     st.divider()
-    st.subheader("Filter")
+    st.subheader("Filter Textbooks")
     which = st.radio("Show", ["All", "Required only", "Optional only"], index=0)
 
 courses = [scraper.Course(**c) for c in load_courses(class_file, os.path.getmtime(class_file))]
