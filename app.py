@@ -249,16 +249,28 @@ for c in selected:
 
 st.dataframe(pd.DataFrame(sched_rows), hide_index=True, use_container_width=True)
 
-try:
-    pdf_bytes = schedule_mod.build_schedule_pdf(selected, title="My Class Schedule")
-    st.download_button(
-        "⬇️ Download schedule PDF",
-        data=pdf_bytes,
-        file_name=f"schedule_{term}.pdf",
-        mime="application/pdf",
-    )
-except Exception as e:  # noqa: BLE001
-    st.error(f"Couldn't build the schedule PDF: {e}")
+def _credits(c) -> float:
+    try:
+        return float(c.credits)
+    except ValueError:
+        return 0.0
+
+
+total_credits = sum(_credits(c) for c in selected)
+
+# Download button and credit total sit side by side on one row.
+with st.container(horizontal=True, vertical_alignment="center"):
+    try:
+        pdf_bytes = schedule_mod.build_schedule_pdf(selected, title="My Class Schedule")
+        st.download_button(
+            "⬇️ Download schedule PDF",
+            data=pdf_bytes,
+            file_name=f"schedule_{term}.pdf",
+            mime="application/pdf",
+        )
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Couldn't build the schedule PDF: {e}")
+    st.markdown(f"**Total credits: {total_credits:g}**", width="content")
 
 st.divider()
 
