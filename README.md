@@ -34,7 +34,7 @@ e.g. `Fall 2026.xls`); to update one, replace it.
 
 
 1. In the sidebar, pick your **Term** from the dropdown — one entry per Excel file,
-   labeled by the **file name** (e.g. `Fall 2026`), which defaults to `Fall 2026` when
+   labeled by the **file name** (e.g. `Fall 2026`), which defaults to `Spring 2027` when
    present. The Course Finder term code used for scraping is derived automatically from
    the file's `Term` column (A=Spring, B=Summer, C=Fall + year). Selections reset when
    you switch terms.

@@ -84,9 +84,9 @@ options = term_options(tuple(class_files), tuple(os.path.getmtime(p) for p in cl
 with st.sidebar:
     st.header("Setup")
     # Pick which term (= which Excel file) to load. Each option is labeled by its
-    # file name, e.g. "Fall 2026". Default to Fall 2026 if present.
+    # file name, e.g. "Fall 2026". Default to Spring 2027 if present.
     labels = [o["label"] for o in options]
-    default_idx = next((i for i, lbl in enumerate(labels) if lbl.lower() == "fall 2026"), 0)
+    default_idx = next((i for i, lbl in enumerate(labels) if lbl.lower() == "spring 2027"), 0)
     idx = st.selectbox("Term", range(len(options)), format_func=lambda i: labels[i], index=default_idx)
     chosen = options[idx]
     class_file = chosen["path"]
