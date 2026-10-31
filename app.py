@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import glob
 import os
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
@@ -165,6 +166,17 @@ else:
 view = table[mask].copy()
 view.insert(0, "Take", view["Section"].isin(st.session_state.taken))
 
+# Link each title to its Course Finder detail page (the same page the textbooks
+# are scraped from). The title rides along in the URL fragment so the LinkColumn
+# can display it via regex; the fragment is ignored by the server.
+url_by_section = {
+    c.section: scraper.detail_url(c.slug, c.section, term)
+    + "#"
+    + quote(c.title or c.slug, safe=" &:/,;'()!?+=$@")
+    for c in courses
+}
+view["Title"] = view["Section"].map(url_by_section)
+
 if not search and st.session_state.taken:
     st.caption(
         f"Showing {len(view)} classes that don't conflict with your selection "
@@ -177,7 +189,12 @@ edited = st.data_editor(
     use_container_width=True,
     height=420,
     disabled=["Section", "Title", "Instructor", "Credits", "Meeting Times"],
-    column_config={"Take": st.column_config.CheckboxColumn("Take", help="Check the classes you're taking")},
+    column_config={
+        "Take": st.column_config.CheckboxColumn("Take", help="Check the classes you're taking"),
+        "Title": st.column_config.LinkColumn(
+            "Title", help="Opens the class's Course Finder page", display_text=r"#(.*)$"
+        ),
+    },
     # Fresh key per filter so edit deltas can't misapply to different rows after
     # a search; the baseline "Take" is rehydrated from session state each time.
     key=f"class_table_{search}",
